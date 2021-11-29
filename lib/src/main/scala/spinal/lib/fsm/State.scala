@@ -240,3 +240,28 @@ class StateDelay(cyclesCount: UInt)(implicit stateMachineAccessor: StateMachineA
     }
   }
 }
+
+/**
+  * State Delay
+  *
+  * @example {{{
+  *   val fsm = new StateMachine {
+  *      ...
+  *     val cond = foo === bar
+  *     val sCond: State = new StateCond(cond){
+  *       whenCompleted {
+  *         goto(sIdle)
+  *       }
+  *     }
+  *     ...
+  *   }
+  * }}}
+  *
+  */
+class StateCond(cond: Bool)(implicit stateMachineAccessor: StateMachineAccessor) extends State with StateCompletionTrait {
+  whenIsActiveWithPriority(1){
+    when(cond){
+      doWhenCompletedTasks()
+    }
+  }
+}

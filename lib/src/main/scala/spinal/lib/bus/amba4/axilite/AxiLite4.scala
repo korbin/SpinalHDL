@@ -83,7 +83,6 @@ object AxiLite4 {
   */
 case class AxiLite4Config(addressWidth : Int,
                           dataWidth    : Int,
-                          
                           readIssuingCapability     : Int = -1,
                           writeIssuingCapability    : Int = -1,
                           combinedIssuingCapability : Int = -1,
@@ -96,95 +95,18 @@ case class AxiLite4Config(addressWidth : Int,
 }
 
 
-/**
-  * Definition of the Write/Read address channel
-  * @param config Axi Lite configuration class
-  */
-case class AxiLite4Ax(config: AxiLite4Config) extends Bundle {
-
-  val addr = UInt(config.addressWidth bits)
-  val prot = Bits(3 bits)
-
-
-  import AxiLite4.prot._
-
-  def setUnprivileged : Unit = prot := UNPRIVILEGED_ACCESS | SECURE_ACCESS | DATA_ACCESS
-  def setPermissions ( permission : Bits ) : Unit = prot := permission
-}
-
-
-/**
-  * Definition of the Write data channel
-  * @param config Axi Lite configuration class
-  */
-case class AxiLite4W(config: AxiLite4Config) extends Bundle {
-  val data = Bits(config.dataWidth bits)
-  val strb = Bits(config.dataWidth / 8 bits)
-
-  def setStrb : Unit = strb := (1 << widthOf(strb))-1
-  def setStrb(bytesLane : Bits) : Unit = strb := bytesLane
-}
-
-
-/**
-  * Definition of the Write response channel
-  * @param config Axi Lite configuration class
-  */
-case class AxiLite4B(config: AxiLite4Config) extends Bundle {
-  val resp = Bits(2 bits)
-
-  import AxiLite4.resp._
-
-  def setOKAY()   : Unit = resp := OKAY
-  def setEXOKAY() : Unit = resp := EXOKAY
-  def setSLVERR() : Unit = resp := SLVERR
-  def setDECERR() : Unit = resp := DECERR
-  def isOKAY()   : Bool = resp === OKAY
-  def isEXOKAY() : Bool = resp === EXOKAY
-  def isSLVERR() : Bool = resp === SLVERR
-  def isDECERR() : Bool = resp === DECERR
-}
-
-/** Companion object to create hard-wired AXI responses. */
-object AxiLite4B {
-  def okay(config: AxiLite4Config) = { val resp = new AxiLite4B(config); resp.setOKAY(); resp }
-  def exclusiveOkay(config: AxiLite4Config) = { val resp = new AxiLite4B(config); resp.setEXOKAY(); resp }
-  def slaveError(config: AxiLite4Config) = { val resp = new AxiLite4B(config); resp.setSLVERR(); resp }
-  def decodeError(config: AxiLite4Config) = { val resp = new AxiLite4B(config); resp.setDECERR(); resp }
-}
-
-
-/**
-  * Definition of the Read data channel
-  * @param config Axi Lite configuration class
-  */
-case class AxiLite4R(config: AxiLite4Config) extends Bundle {
-  val data = Bits(config.dataWidth bits)
-  val resp = Bits(2 bits)
-
-  import AxiLite4.resp._
-
-  def setOKAY()   : Unit = resp := OKAY
-  def setEXOKAY() : Unit = resp := EXOKAY
-  def setSLVERR() : Unit = resp := SLVERR
-  def setDECERR() : Unit = resp := DECERR
-  def isOKAY()   : Bool = resp === OKAY
-  def isEXOKAY() : Bool = resp === EXOKAY
-  def isSLVERR() : Bool = resp === SLVERR
-  def isDECERR() : Bool = resp === DECERR
-}
-
+trait AxiLite4Bus
 
 /**
   * Axi Lite interface definition
   * @param config Axi Lite configuration class
   */
-case class AxiLite4(config: AxiLite4Config) extends Bundle with IMasterSlave {
+case class AxiLite4(config: AxiLite4Config) extends Bundle with IMasterSlave with AxiLite4Bus {
 
-  val aw = Stream(AxiLite4Ax(config))
+  val aw = Stream(AxiLite4Aw(config))
   val w  = Stream(AxiLite4W(config))
   val b  = Stream(AxiLite4B(config))
-  val ar = Stream(AxiLite4Ax(config))
+  val ar = Stream(AxiLite4Ar(config))
   val r  = Stream(AxiLite4R(config))
 
   //Because aw w b ar r are ... very lazy
@@ -196,16 +118,43 @@ case class AxiLite4(config: AxiLite4Config) extends Bundle with IMasterSlave {
 
 
   def >> (that : AxiLite4) : Unit = {
-    assert(that.config == this.config)
-    this.writeCmd  >> that.writeCmd
-    this.writeData >> that.writeData
-    this.writeRsp  << that.writeRsp
-
-    this.readCmd  >> that.readCmd
-    this.readRsp << that.readRsp
+    this.readCmd drive that.readCmd
+    this.writeCmd drive that.writeCmd
+    this.writeData drive that.writeData
+    that.readRsp drive this.readRsp
+    that.writeRsp drive this.writeRsp
   }
 
   def <<(that : AxiLite4) : Unit = that >> this
+
+  def <<(that : AxiLite4WriteOnly) : Unit = that >> this
+  def >> (that : AxiLite4WriteOnly) : Unit = {
+    this.writeCmd drive that.writeCmd
+    this.writeData drive that.writeData
+    that.writeRsp drive this.writeRsp
+  }
+
+  def <<(that : AxiLite4ReadOnly) : Unit = that >> this
+  def >> (that : AxiLite4ReadOnly) : Unit = {
+    this.readCmd drive that.readCmd
+    that.readRsp drive this.readRsp
+  }
+
+  def toReadOnly(): AxiLite4ReadOnly ={
+    val ret = AxiLite4ReadOnly(config)
+    ret << this
+    ret
+  }
+
+  def toWriteOnly(): AxiLite4WriteOnly ={
+    val ret = AxiLite4WriteOnly(config)
+    ret << this
+    ret
+  }
+
+  def toShared() : AxiLite4Shared = {
+    AxiLite4ToAxiLite4Shared(this)
+  }
 
   override def asMaster(): Unit = {
     master(aw,w)
@@ -216,8 +165,32 @@ case class AxiLite4(config: AxiLite4Config) extends Bundle with IMasterSlave {
   }
 }
 
+object AxiLite4ToAxiLite4Shared{
+  def apply(axilite : AxiLite4): AxiLite4Shared ={
+    val axiLiteShared = new AxiLite4Shared(axilite.config)
+    val arbiter = StreamArbiterFactory.roundRobin.build(new AxiLite4Ax(axilite.config),2)
+    arbiter.io.inputs(0) << axilite.ar.asInstanceOf[Stream[AxiLite4Ax]]
+    arbiter.io.inputs(1) << axilite.aw.asInstanceOf[Stream[AxiLite4Ax]]
 
-object  AxiLite4SpecRenamer{
+    axiLiteShared.arw.arbitrationFrom(arbiter.io.output)
+    axiLiteShared.arw.payload.assignSomeByName(arbiter.io.output.payload)
+    axiLiteShared.arw.write := arbiter.io.chosenOH(1)
+    axilite.w >> axiLiteShared.w
+    axilite.b << axiLiteShared.b
+    axilite.r << axiLiteShared.r
+    axiLiteShared
+  }
+
+  def main(args: Array[String]) {
+    SpinalVhdl(new Component{
+      val axi = slave(AxiLite4(AxiLite4Config(32,32)))
+      val axiLiteShared = master(AxiLite4ToAxiLite4Shared(axi))
+    })
+  }
+}
+
+
+object AxiLite4SpecRenamer{
   def apply(that : AxiLite4): Unit ={
     def doIt = {
       that.flatten.foreach((bt) => {
@@ -247,4 +220,3 @@ object  AxiLite4SpecRenamer{
       doIt
   }
 }
-
