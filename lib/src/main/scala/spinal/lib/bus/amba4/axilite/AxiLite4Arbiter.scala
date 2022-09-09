@@ -15,7 +15,7 @@ case class AxiLite4ReadOnlyArbiter(config: AxiLite4Config,inputsCount : Int) ext
   (cmdArbiter.io.inputs,io.inputs.map(_.readCmd)).zipped.map(_ <> _)
 
   val (cmdOutputFork, rspRouteFork) = StreamFork2(cmdArbiter.io.output)
-  cmdArbiter.io.output <> io.output.readCmd
+  cmdOutputFork >> io.output.readCmd
 
   val rspRoute = rspRouteFork.translateWith(cmdArbiter.io.chosen)
   rspRoute.ready := io.output.readRsp.fire

@@ -35,6 +35,18 @@ case class AxiLite4WriteOnly(config: AxiLite4Config) extends Bundle with IMaster
     sink
   }
 
+  def pipelined(
+    aw: StreamPipe = StreamPipe.NONE,
+    w: StreamPipe = StreamPipe.NONE,
+    b: StreamPipe = StreamPipe.NONE
+  ): AxiLite4WriteOnly = {
+    val ret = cloneOf(this)
+    ret.aw << this.aw.pipelined(aw)
+    ret.w << this.w.pipelined(w)
+    ret.b.pipelined(b) >> this.b
+    ret
+  }
+
   override def asMaster(): Unit = {
     master(aw,w)
     slave(b)

@@ -743,9 +743,21 @@ class StreamArbiterFactory {
 object StreamDispatcherSequential {
   def apply[T <: Data](input: Stream[T], outputCount: Int): Vec[Stream[T]] = {
     val select = Counter(outputCount)
+
     when (input.fire) {
-    select.increment()
+      select.increment()
     }
+
+    StreamDemux(input, select, outputCount)
+  }
+
+  def apply[T <: Data](input: Stream[Fragment[T]], outputCount: Int)(implicit d: DummyImplicit): Vec[Stream[Fragment[T]]] = {
+    val select = Counter(outputCount)
+
+    when (input.fire & input.last) {
+      select.increment()
+    }
+
     StreamDemux(input, select, outputCount)
   }
 }
@@ -1037,7 +1049,7 @@ object StreamFifo{
   def apply[T <: Data](dataType: T, depth: Int) = new StreamFifo(dataType,depth)
 }
 
-class StreamFifo[T <: Data](dataType: HardType[T], depth: Int) extends Component {
+class StreamFifo[T <: Data](dataType: HardType[T], depth: Int, initValue: Int = 0) extends Component {
   require(depth >= 0)
   val io = new Bundle {
     val push = slave Stream (dataType)
@@ -1060,6 +1072,11 @@ class StreamFifo[T <: Data](dataType: HardType[T], depth: Int) extends Component
   val logic = (depth > 1) generate new Area {
     val ram = Mem(dataType, depth)
     val pushPtr = Counter(depth)
+
+    if(initValue > 0) {
+      pushPtr.value.init(initValue)
+    }
+
     val popPtr = Counter(depth)
     val ptrMatch = pushPtr === popPtr
     val risingOccupancy = RegInit(False)

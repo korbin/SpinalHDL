@@ -29,6 +29,17 @@ case class AxiLite4ReadOnly(config: AxiLite4Config) extends Bundle with IMasterS
     sink
   }
 
+
+  def pipelined(
+    ar: StreamPipe = StreamPipe.NONE,
+    r: StreamPipe = StreamPipe.NONE
+  ): AxiLite4ReadOnly = {
+    val ret = cloneOf(this)
+    ret.ar << this.ar.pipelined(ar)
+    ret.r.pipelined(r) >> this.r
+    ret
+  }
+
   override def asMaster(): Unit = {
     master(ar)
     slave(r)

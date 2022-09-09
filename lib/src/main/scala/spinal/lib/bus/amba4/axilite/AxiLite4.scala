@@ -101,7 +101,7 @@ trait AxiLite4Bus
   * Axi Lite interface definition
   * @param config Axi Lite configuration class
   */
-case class AxiLite4(config: AxiLite4Config) extends Bundle with IMasterSlave with AxiLite4Bus {
+case class AxiLite4(val config: AxiLite4Config) extends Bundle with IMasterSlave with AxiLite4Bus {
 
   val aw = Stream(AxiLite4Aw(config))
   val w  = Stream(AxiLite4W(config))
@@ -154,6 +154,22 @@ case class AxiLite4(config: AxiLite4Config) extends Bundle with IMasterSlave wit
 
   def toShared() : AxiLite4Shared = {
     AxiLite4ToAxiLite4Shared(this)
+  }
+
+  def pipelined(
+    aw: StreamPipe = StreamPipe.NONE,
+    w: StreamPipe = StreamPipe.NONE,
+    b: StreamPipe = StreamPipe.NONE,
+    ar: StreamPipe = StreamPipe.NONE,
+    r: StreamPipe = StreamPipe.NONE
+  ): AxiLite4 = {
+    val ret = cloneOf(this)
+    ret.aw << this.aw.pipelined(aw)
+    ret.w << this.w.pipelined(w)
+    ret.b.pipelined(b) >> this.b
+    ret.ar << this.ar.pipelined(ar)
+    ret.r.pipelined(r) >> this.r
+    ret
   }
 
   override def asMaster(): Unit = {
